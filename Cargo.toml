@@ -1,0 +1,2 @@
+[workspace]
+members = ["sgml", "dtd_gen", "sgml_to_xml", "dtd_gen_example"]

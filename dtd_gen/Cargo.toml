@@ -1,0 +1,13 @@
+[package]
+name = "dtd_gen"
+version = "0.1.0"
+authors = ["CUB3D <callumthom11@gmail.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+sgml = { path = "../sgml" }
+quote = "1.0"
+proc-macro2 = "1.0"
