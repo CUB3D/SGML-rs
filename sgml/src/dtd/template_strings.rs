@@ -1,4 +1,4 @@
-use crate::entity::{parse_parameter_reference, Entity};
+use crate::dtd::entity::{parse_parameter_reference, Entity};
 use nom::bytes::complete::take;
 use nom::error::ErrorKind;
 use nom::IResult;
@@ -103,8 +103,8 @@ impl From<&str> for TemplateString {
 
 #[cfg(test)]
 pub mod test {
-    use crate::entity::Entity;
-    use crate::template_strings::{parse_string, ChainElement, TemplateString};
+    use crate::dtd::entity::Entity;
+    use crate::dtd::template_strings::{parse_string, ChainElement, TemplateString};
 
     #[test]
     pub fn test_basic_string() {

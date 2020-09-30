@@ -1,6 +1,6 @@
-use crate::comment::parse_inline_comment;
-use crate::dtd::{take_until_whitespace, take_whitespace, take_whitespace_opt};
-use crate::template_strings::{parse_string, TemplateString};
+use crate::dtd::comment::parse_inline_comment;
+use crate::dtd::dtd::{take_until_whitespace, take_whitespace, take_whitespace_opt};
+use crate::dtd::template_strings::{parse_string, TemplateString};
 use nom::bytes::complete::{tag, tag_no_case, take_until, take_while1, take_while_m_n};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
@@ -105,7 +105,7 @@ fn take_reference_close(i: &str) -> IResult<&str, &str> {
     tag(REFERENCE_CLOSE)(i)
 }
 
-fn take_space(i: &str) -> IResult<&str, &str> {
+pub fn take_space(i: &str) -> IResult<&str, &str> {
     take_while_m_n(1, 1, |c: char| c.is_whitespace())(i)
     // tag(" ")(i)
 }

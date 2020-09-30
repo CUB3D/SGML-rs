@@ -1,6 +1,6 @@
-use crate::dtd::{take_whitespace, take_whitespace_opt};
-use crate::entity::Entity;
-use crate::template_strings::{parse_string, ChainElement, TemplateString};
+use crate::dtd::dtd::{take_whitespace, take_whitespace_opt};
+use crate::dtd::entity::Entity;
+use crate::dtd::template_strings::{parse_string, ChainElement, TemplateString};
 use nom::bytes::complete::{tag, tag_no_case, take_until, take_while};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
@@ -330,8 +330,8 @@ pub fn parse_content_model(i: &str) -> IResult<&str, Vec<ContentModelToken>> {
 
 #[cfg(test)]
 pub mod test {
-    use crate::element::{parse_content_model, parse_content_model_group};
-    use crate::template_strings::TemplateString;
+    use crate::dtd::element::{parse_content_model, parse_content_model_group};
+    use crate::dtd::template_strings::TemplateString;
 
     #[test]
     pub fn test_parse_content_model_basic() {

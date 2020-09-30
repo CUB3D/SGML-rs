@@ -1,5 +1,5 @@
-use crate::dtd::{take_until_whitespace, take_whitespace, MARKUP_DECLARATION_OPEN};
-use crate::template_strings::{parse_string, TemplateString};
+use crate::dtd::dtd::{take_until_whitespace, take_whitespace, MARKUP_DECLARATION_OPEN};
+use crate::dtd::template_strings::{parse_string, TemplateString};
 use nom::bytes::complete::{tag, tag_no_case, take_until};
 use nom::multi::many1;
 use nom::IResult;
@@ -60,7 +60,7 @@ pub fn parse_att_list_element(i: &str) -> IResult<&str, ATTListElement> {
 
 #[cfg(test)]
 pub mod test {
-    use crate::att_list::{parse_att_list, ATTListElement};
+    use crate::dtd::att_list::{parse_att_list, ATTListElement};
 
     #[test]
     pub fn test_att_list() {

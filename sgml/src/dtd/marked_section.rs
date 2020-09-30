@@ -1,4 +1,4 @@
-use crate::dtd::{
+use crate::dtd::dtd::{
     take_whitespace, take_whitespace_opt, DECLARATION_SUBSET_OPEN, MARKED_SECTION_CLOSE,
     MARKUP_DECLARATION_OPEN, MDC,
 };
@@ -33,7 +33,7 @@ pub fn parse_marked_section(i: &str) -> IResult<&str, MarkedSection> {
 
 #[cfg(test)]
 pub mod test {
-    use crate::marked_section::parse_marked_section;
+    use crate::dtd::marked_section::parse_marked_section;
 
     #[test]
     pub fn test_marked_section() {
