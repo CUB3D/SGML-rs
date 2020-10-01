@@ -17,7 +17,7 @@ use nom::IResult;
 pub const MARKUP_DECLARATION_OPEN: &str = "<!";
 pub const DECLARATION_SUBSET_OPEN: &str = "[";
 pub const MARKED_SECTION_CLOSE: &str = "]]";
-pub const MDC: &str = ">";
+pub const MARKUP_DECLARATION_CLOSE: &str = ">";
 
 pub const PROCESSING_INSTRUCTION_OPEN: &str = "<?";
 pub const PROCESSING_INSTRUCTION_CLOSE: &str = ">";

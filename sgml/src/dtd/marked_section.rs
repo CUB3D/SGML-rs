@@ -1,6 +1,6 @@
 use crate::dtd::dtd::{
     take_whitespace, take_whitespace_opt, DECLARATION_SUBSET_OPEN, MARKED_SECTION_CLOSE,
-    MARKUP_DECLARATION_OPEN, MDC,
+    MARKUP_DECLARATION_OPEN, MARKUP_DECLARATION_CLOSE,
 };
 use nom::bytes::complete::{tag, take_until};
 use nom::IResult;
@@ -20,7 +20,7 @@ pub fn parse_marked_section(i: &str) -> IResult<&str, MarkedSection> {
     let (i, _) = tag(DECLARATION_SUBSET_OPEN)(i)?;
     let (i, content) = take_until(MARKED_SECTION_CLOSE)(i)?;
     let (i, _) = tag(MARKED_SECTION_CLOSE)(i)?;
-    let (i, _) = tag(MDC)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
 
     Ok((
         i,

@@ -1,11 +1,12 @@
 use crate::dtd::comment::parse_inline_comment;
-use crate::dtd::dtd::{take_until_whitespace, take_whitespace, MARKUP_DECLARATION_OPEN};
+use crate::dtd::dtd::{take_until_whitespace, take_whitespace, MARKUP_DECLARATION_OPEN, MARKUP_DECLARATION_CLOSE};
 use crate::dtd::entity::take_space;
 use nom::bytes::complete::{is_a, tag, tag_no_case};
 use nom::bytes::streaming::take_until;
 use nom::multi::{many0, many1};
 use nom::sequence::tuple;
 use nom::IResult;
+use nom::error::ErrorKind;
 
 // macro_rules! one_of {
 //     ($($expr: expr),*, $i: ident) ==> {
@@ -39,6 +40,16 @@ pub fn parse_parameter_seperator(i: &str) -> IResult<&str, String> {
 }
 
 pub fn parse_minimum_literal(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(LITERAL_START_OR_END)(i)?;
+    let (i, content) = take_until(LITERAL_START_OR_END)(i)?;
+    let (i, _) = tag(LITERAL_START_OR_END)(i)?;
+
+    Ok((i, content))
+    //TODO: support alternate form
+}
+
+///ISO(10.1.2)[66] TODO: actually implement e.g. [67]
+pub fn parse_parameter_literal(i: &str) -> IResult<&str, &str> {
     let (i, _) = tag(LITERAL_START_OR_END)(i)?;
     let (i, content) = take_until(LITERAL_START_OR_END)(i)?;
     let (i, _) = tag(LITERAL_START_OR_END)(i)?;
@@ -151,7 +162,17 @@ pub fn parse_number(i: &str) -> IResult<&str, &str> {
 //TODO: this has weird overly complex definition in the spec
 /// ISO(9.3)[55]
 pub fn parse_name(i: &str) -> IResult<&str, &str> {
-    take_until_whitespace(i)
+    let (i, name) = take_until_whitespace(i)?;
+
+    //TODO: error when parsing reserved name use 13.4.7 as parser will eat all (name, name) pairs including parts of the feature definitions
+    //TODO: quick hack to make parsing work by not allowing FEATURES to be a name
+    //TODO: is there a way to make a nom parser less "greedy"
+
+    //TODO: this bug is in both (13.4.8) and (13.4.7) many0
+    if name == "FEATURES" || name == "QUANTITY" {
+        return Err(nom::Err::Error((i, ErrorKind::Tag)));
+    }
+    Ok((i, name))
     // let (i, _) = many1(is_a("1234567890"))(i)?;
     // Ok((i, ""))
 }
@@ -217,7 +238,7 @@ pub fn parse_concrete_syntax(i: &str) -> IResult<&str, &str> {
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = parse_naming_rules(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
-    let (i, _) = parse_delmiter_set(i)?;
+    let (i, _) = parse_delimiter_set(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = parse_reserved_name_use(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
@@ -226,9 +247,53 @@ pub fn parse_concrete_syntax(i: &str) -> IResult<&str, &str> {
     Ok((i, ""))
 }
 
+pub fn parse_no(i: &str) -> IResult<&str, &str> { tag_no_case("NO")(i) }
+pub fn parse_yes(i: &str) -> IResult<&str, &str> { tag_no_case("YES")(i) }
+pub fn parse_no_or_yes(i: &str) -> IResult<&str, &str> { parse_no(i).or_else(|_| parse_yes(i)) }
+
+/// ISO(13.4.5)[189]
+pub fn parse_naming_rules(i: &str) -> IResult<&str, &str> {
+
+
+
+
+    let (i, _) = tag_no_case("NAMING")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("LCNMSTRT")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_parameter_literal(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("UCNMSTRT")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_parameter_literal(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("LCNMCHAR")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_parameter_literal(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("UCNMCHAR")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_parameter_literal(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("NAMECASE")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("GENERAL")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("ENTITY")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+
+    Ok((i, ""))
+}
+
 /// ISO(13.4.4)[186]
 pub fn parse_function_character_identification(i: &str) -> IResult<&str, &str> {
-    tuple((
+    let (i, _) = tuple((
         tag_no_case("FUNCTION"),
         many1(parse_parameter_seperator),
         tag_no_case("RE"),
@@ -250,7 +315,8 @@ pub fn parse_function_character_identification(i: &str) -> IResult<&str, &str> {
             many1(parse_parameter_seperator),
             parse_character_number,
         ))),
-    ))
+    ))(i)?;
+    Ok((i, ""))
 }
 
 /// ISO(13.4.4)[187]
@@ -261,6 +327,13 @@ pub fn parse_added_function(i: &str) -> IResult<&str, &str> {
 /// ISO(13.4.4)[188]
 pub fn parse_function_class(i: &str) -> IResult<&str, &str> {
     let take_funchar = |i| -> IResult<&str, &str> { tag_no_case("FUNCHAR")(i) };
+    let take_msichar = |i| -> IResult<&str, &str> { tag_no_case("MSICHAR")(i) };
+    let take_msochar = |i| -> IResult<&str, &str> { tag_no_case("MSOCHAR")(i) };
+    let take_msschar = |i| -> IResult<&str, &str> { tag_no_case("MSSCHAR")(i) };
+    let take_sepchar = |i| -> IResult<&str, &str> { tag_no_case("SEPCHAR")(i) };
+
+    let (i, _) = take_funchar(i).or_else(|_| take_msichar(i).or_else(|_| take_msochar(i).or_else(|_| take_msschar(i).or_else(|_| take_sepchar(i)))))?;
+    Ok((i, ""))
 }
 
 /// ISO(13.4.3)[194]
@@ -273,6 +346,7 @@ pub fn parse_shunned_character_number_identification(i: &str) -> IResult<&str, &
     let (i, _) = tag_no_case("SHUNCHAR")(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
 
+    //TODO: should be func
     let take_none = |i| -> IResult<&str, &str> { tag_no_case("NONE")(i) };
 
     let take_right_side = |i| -> IResult<&str, &str> {
@@ -320,7 +394,7 @@ pub fn parse_reserved_name_use(i: &str) -> IResult<&str, &str> {
     let (i, _) = tag_no_case("NAMES")(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = tag_no_case("SGMLREF")(i)?;
-    let (i, _) = many0(tuple((
+    let (i, _x) = many0(tuple((
         many1(parse_parameter_seperator),
         parse_name,
         many1(parse_parameter_seperator),
@@ -341,6 +415,169 @@ pub fn parse_delimiter_set(i: &str) -> IResult<&str, &str> {
     Ok((i, ""))
 }
 
+/// ISO(13.4.6.1)[191]
+pub fn parse_general_delimiters(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("GENERAL")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("SGMLREF")(i)?;
+    let (i, _) = many0(tuple((
+        many0(parse_parameter_seperator),
+        parse_name,
+        many1(parse_parameter_seperator),
+        parse_parameter_literal,
+    )))(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(13.4.6.2)[192]
+pub fn parse_short_reference_delimiters(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("SHORTREF")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let take_sgmlref = |i| -> IResult<&str, &str> { tag_no_case("SGMLREF")(i) };
+
+    let (i, _) = take_sgmlref(i).or_else(|_| tag_no_case("NONE")(i))?;
+    let (i, _) = many0(tuple((
+        many1(parse_parameter_seperator),
+        parse_parameter_literal,
+        )))(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(13.5)[195]
+pub fn parse_feature_use(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("FEATURES")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_markup_minimization_features(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_link_type_features(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_other_features(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(13.5.1)[196]
+pub fn parse_markup_minimization_features(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("MINIMIZE")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("DATATAG")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("OMITTAG")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("RANK")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("SHORTTAG")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(13.5.2)[197]
+pub fn parse_link_type_features(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("LINK")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("SIMPLE")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    //TODO: according to the spec this is the correct format here
+    // let (i, _) = tuple((
+    //     parse_no_or_yes,
+    //     many1(parse_parameter_seperator),
+    //     parse_number
+    //     ))(i)?;
+    // However in practise it seems to be more like this (missing braces around right hand side of or clause?)
+    let (i, _) = parse_no(i).or_else(|_| {
+        let (i, _) = tuple((
+            parse_yes,
+            many1(parse_parameter_seperator),
+            parse_number
+        ))(i)?;
+        Ok((i, ""))
+    })?;
+
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("IMPLICIT")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("EXPLICIT")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no(i).or_else(|_| {
+         let (i, _) = tuple((
+            parse_yes,
+            many1(parse_parameter_seperator),
+            parse_number,
+        ))(i)?;
+        Ok((i, ""))
+    })?;
+
+    Ok((i, ""))
+}
+
+/// ISO(13.5.3)[198]
+pub fn parse_other_features(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("OTHER")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("CONCUR")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    //TODO: should be a func
+    let (i, _) = parse_no(i).or_else(|_| {
+        let (i, _) = tuple((
+            parse_yes,
+            many1(parse_parameter_seperator),
+            parse_number,
+        ))(i)?;
+        Ok((i, ""))
+    })?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("SUBDOC")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    //TODO: should be a func
+    let (i, _) = parse_no(i).or_else(|_| {
+        let (i, _) = tuple((
+            parse_yes,
+            many1(parse_parameter_seperator),
+            parse_number,
+        ))(i)?;
+        Ok((i, ""))
+    })?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+
+    let (i, _) = tag_no_case("FORMAL")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_no_or_yes(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(13.6)[199]
+pub fn parse_application_specific_information(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag_no_case("APPINFO")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    //TODO: should be func
+    let take_none = |i| -> IResult<&str, &str> { tag_no_case("NONE")(i) };
+    let (i, _) = take_none(i).or_else(|_| parse_minimum_literal(i))?;
+
+    Ok((i, ""))
+}
+
+
 /// ISO(13)[171]
 pub fn parse_sgml_declaration(i: &str) -> IResult<&str, &str> {
     let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
@@ -357,12 +594,13 @@ pub fn parse_sgml_declaration(i: &str) -> IResult<&str, &str> {
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = parse_concrete_syntax(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_feature_use(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_application_specific_information(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
 
     Ok((i, ""))
-
-    //concrete syntax, ps +, feature use,
-    // ps +, application-specific information, ps*,
-    // mdc
 }
 
 #[cfg(test)]
