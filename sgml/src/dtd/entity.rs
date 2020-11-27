@@ -119,7 +119,7 @@ fn take_record_end(i: &str) -> IResult<&str, &str> {
     return if a.is_some() || b.is_some() || c.is_some() || d.is_some() {
         Ok((i, ""))
     } else {
-        Err(nom::Err::Error((i, ErrorKind::Tag)))
+        Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Tag)))
     };
 }
 

@@ -4,7 +4,7 @@ use crate::dtd::template_strings::{parse_string, ChainElement, TemplateString};
 use nom::bytes::complete::{tag, tag_no_case, take_until, take_while};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
-use nom::multi::{separated_list, separated_nonempty_list};
+use nom::multi::{separated_list0, separated_list1};
 use nom::IResult;
 
 #[derive(Debug, Clone)]
@@ -228,10 +228,10 @@ fn take_group_close(i: &str) -> IResult<&str, &str> {
 
 pub fn parse_element_name_group(i: &str) -> IResult<&str, Vec<String>> {
     if !i.contains('|') {
-        return Err(nom::Err::Error((i, ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Tag)));
     }
     let (i, _) = take_whitespace_opt(i)?;
-    let (i, x) = separated_nonempty_list(tag("|"), take_while(|c: char| c.is_alphanumeric()))(i)?;
+    let (i, x) = separated_list1(tag("|"), take_while(|c: char| c.is_alphanumeric()))(i)?;
     let (i, _) = take_whitespace_opt(i)?;
     Ok((i, x.iter().map(|f| f.to_string()).collect()))
 
@@ -280,7 +280,7 @@ pub fn parse_content_model_group(i: &str) -> IResult<&str, Vec<ContentModelToken
 
         // If we are stuck in a loop and can't go further, error out
         if i == j {
-            return Err(nom::Err::Error((i, ErrorKind::Tag)));
+            return Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Tag)));
         }
 
         i = j;

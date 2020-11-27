@@ -63,7 +63,7 @@ pub fn parse_capacity_set(i: &str) -> IResult<&str, &str> {
     let (i, _) = many1(parse_parameter_seperator)(i)?;
 
     let opt_1 = |i| -> IResult<&str, &str> {
-        tuple((
+        let (i, _) = tuple((
             tag_no_case("PUBLIC"),
             many1(parse_parameter_seperator),
             parse_public_identifier,
@@ -90,6 +90,15 @@ pub fn parse_capacity_set(i: &str) -> IResult<&str, &str> {
     }?;
 
     Ok((i, ""))
+}
+
+#[test]
+fn test_parse_capacity_set() {
+    let i = "CAPACITY PUBLIC    \"ISO 8879:1986//CAPACITY Reference//EN\"";
+    let res = parse_capacity_set(i);
+    assert_eq!(res.is_ok(), true);
+    let (i, c) = res.unwrap();
+    assert_eq!(i, "");
 }
 
 ///ISO(10.1.6)
@@ -170,7 +179,7 @@ pub fn parse_name(i: &str) -> IResult<&str, &str> {
 
     //TODO: this bug is in both (13.4.8) and (13.4.7) many0
     if name == "FEATURES" || name == "QUANTITY" {
-        return Err(nom::Err::Error((i, ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(i, ErrorKind::Tag)));
     }
     Ok((i, name))
     // let (i, _) = many1(is_a("1234567890"))(i)?;
@@ -597,7 +606,7 @@ pub fn parse_sgml_declaration(i: &str) -> IResult<&str, &str> {
     let (i, _) = parse_feature_use(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = parse_application_specific_information(i)?;
-    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
     let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
 
     Ok((i, ""))
