@@ -1,12 +1,14 @@
 use crate::dtd::comment::parse_inline_comment;
-use crate::dtd::dtd::{take_until_whitespace, take_whitespace, MARKUP_DECLARATION_OPEN, MARKUP_DECLARATION_CLOSE};
+use crate::dtd::dtd::{
+    take_until_whitespace, take_whitespace, MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
+};
 use crate::dtd::entity::take_space;
 use nom::bytes::complete::{is_a, tag, tag_no_case};
 use nom::bytes::streaming::take_until;
+use nom::error::ErrorKind;
 use nom::multi::{many0, many1};
 use nom::sequence::tuple;
 use nom::IResult;
-use nom::error::ErrorKind;
 
 // macro_rules! one_of {
 //     ($($expr: expr),*, $i: ident) ==> {
@@ -256,16 +258,18 @@ pub fn parse_concrete_syntax(i: &str) -> IResult<&str, &str> {
     Ok((i, ""))
 }
 
-pub fn parse_no(i: &str) -> IResult<&str, &str> { tag_no_case("NO")(i) }
-pub fn parse_yes(i: &str) -> IResult<&str, &str> { tag_no_case("YES")(i) }
-pub fn parse_no_or_yes(i: &str) -> IResult<&str, &str> { parse_no(i).or_else(|_| parse_yes(i)) }
+pub fn parse_no(i: &str) -> IResult<&str, &str> {
+    tag_no_case("NO")(i)
+}
+pub fn parse_yes(i: &str) -> IResult<&str, &str> {
+    tag_no_case("YES")(i)
+}
+pub fn parse_no_or_yes(i: &str) -> IResult<&str, &str> {
+    parse_no(i).or_else(|_| parse_yes(i))
+}
 
 /// ISO(13.4.5)[189]
 pub fn parse_naming_rules(i: &str) -> IResult<&str, &str> {
-
-
-
-
     let (i, _) = tag_no_case("NAMING")(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = tag_no_case("LCNMSTRT")(i)?;
@@ -341,7 +345,10 @@ pub fn parse_function_class(i: &str) -> IResult<&str, &str> {
     let take_msschar = |i| -> IResult<&str, &str> { tag_no_case("MSSCHAR")(i) };
     let take_sepchar = |i| -> IResult<&str, &str> { tag_no_case("SEPCHAR")(i) };
 
-    let (i, _) = take_funchar(i).or_else(|_| take_msichar(i).or_else(|_| take_msochar(i).or_else(|_| take_msschar(i).or_else(|_| take_sepchar(i)))))?;
+    let (i, _) = take_funchar(i).or_else(|_| {
+        take_msichar(i)
+            .or_else(|_| take_msochar(i).or_else(|_| take_msschar(i).or_else(|_| take_sepchar(i))))
+    })?;
     Ok((i, ""))
 }
 
@@ -448,7 +455,7 @@ pub fn parse_short_reference_delimiters(i: &str) -> IResult<&str, &str> {
     let (i, _) = many0(tuple((
         many1(parse_parameter_seperator),
         parse_parameter_literal,
-        )))(i)?;
+    )))(i)?;
 
     Ok((i, ""))
 }
@@ -508,11 +515,7 @@ pub fn parse_link_type_features(i: &str) -> IResult<&str, &str> {
     //     ))(i)?;
     // However in practise it seems to be more like this (missing braces around right hand side of or clause?)
     let (i, _) = parse_no(i).or_else(|_| {
-        let (i, _) = tuple((
-            parse_yes,
-            many1(parse_parameter_seperator),
-            parse_number
-        ))(i)?;
+        let (i, _) = tuple((parse_yes, many1(parse_parameter_seperator), parse_number))(i)?;
         Ok((i, ""))
     })?;
 
@@ -526,11 +529,7 @@ pub fn parse_link_type_features(i: &str) -> IResult<&str, &str> {
     let (i, _) = tag_no_case("EXPLICIT")(i)?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     let (i, _) = parse_no(i).or_else(|_| {
-         let (i, _) = tuple((
-            parse_yes,
-            many1(parse_parameter_seperator),
-            parse_number,
-        ))(i)?;
+        let (i, _) = tuple((parse_yes, many1(parse_parameter_seperator), parse_number))(i)?;
         Ok((i, ""))
     })?;
 
@@ -546,11 +545,7 @@ pub fn parse_other_features(i: &str) -> IResult<&str, &str> {
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     //TODO: should be a func
     let (i, _) = parse_no(i).or_else(|_| {
-        let (i, _) = tuple((
-            parse_yes,
-            many1(parse_parameter_seperator),
-            parse_number,
-        ))(i)?;
+        let (i, _) = tuple((parse_yes, many1(parse_parameter_seperator), parse_number))(i)?;
         Ok((i, ""))
     })?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
@@ -559,11 +554,7 @@ pub fn parse_other_features(i: &str) -> IResult<&str, &str> {
     let (i, _) = many1(parse_parameter_seperator)(i)?;
     //TODO: should be a func
     let (i, _) = parse_no(i).or_else(|_| {
-        let (i, _) = tuple((
-            parse_yes,
-            many1(parse_parameter_seperator),
-            parse_number,
-        ))(i)?;
+        let (i, _) = tuple((parse_yes, many1(parse_parameter_seperator), parse_number))(i)?;
         Ok((i, ""))
     })?;
     let (i, _) = many1(parse_parameter_seperator)(i)?;
@@ -585,7 +576,6 @@ pub fn parse_application_specific_information(i: &str) -> IResult<&str, &str> {
 
     Ok((i, ""))
 }
-
 
 /// ISO(13)[171]
 pub fn parse_sgml_declaration(i: &str) -> IResult<&str, &str> {

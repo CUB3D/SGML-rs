@@ -1,1 +1,1 @@
-mod sgml_declaration;
+pub(crate) mod sgml_declaration;

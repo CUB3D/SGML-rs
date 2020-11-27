@@ -1,6 +1,6 @@
 use crate::dtd::dtd::{
     take_whitespace, take_whitespace_opt, DECLARATION_SUBSET_OPEN, MARKED_SECTION_CLOSE,
-    MARKUP_DECLARATION_OPEN, MARKUP_DECLARATION_CLOSE,
+    MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
 };
 use nom::bytes::complete::{tag, take_until};
 use nom::IResult;
