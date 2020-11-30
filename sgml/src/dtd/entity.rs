@@ -1,6 +1,7 @@
 use crate::dtd::comment::parse_inline_comment;
 use crate::dtd::dtd::{take_until_whitespace, take_whitespace, take_whitespace_opt};
 use crate::dtd::template_strings::{parse_string, TemplateString};
+use crate::sgml::sgml::REFERENCE_CLOSE;
 use nom::bytes::complete::{tag, tag_no_case, take_while1, take_while_m_n};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
@@ -92,9 +93,7 @@ fn test_internal_parameter() {
     assert_eq!(e.parameter, true);
 }
 
-const ENTITY_REFERENCE_OPEN: &str = "&";
 const PARAMETER_ENTITY_REFERENCE_OPEN: &str = "%";
-const REFERENCE_CLOSE: &str = ";";
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParameterReference {

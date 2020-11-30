@@ -1,15 +1,17 @@
 use crate::dtd::dtd::{
     take_until_whitespace, take_whitespace, DECLARATION_SUBSET_CLOSE, DECLARATION_SUBSET_OPEN,
-    MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
+    MARKED_SECTION_CLOSE, MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
+    PROCESSING_INSTRUCTION_CLOSE, PROCESSING_INSTRUCTION_OPEN,
 };
 use crate::dtd::element::{GROUP_CLOSE, GROUP_OPEN};
+use crate::dtd::marked_section::parse_marked_section;
 use crate::sgml_declaration::sgml_declaration::{
-    parse_parameter_seperator, parse_public_identifier, parse_sgml_declaration,
+    parse_number, parse_parameter_seperator, parse_public_identifier, parse_sgml_declaration,
 };
 use nom::bits::complete::take;
 use nom::bytes::complete::{tag, tag_no_case, take_while, take_while_m_n};
 use nom::combinator::opt;
-use nom::error::ErrorKind::Many0;
+use nom::error::ErrorKind::{Many0, TakeUntil};
 use nom::multi::{many0, many1};
 use nom::sequence::tuple;
 use nom::IResult;
@@ -35,7 +37,17 @@ pub const VALUE_INDICATOR: &str = "=";
 /// COM
 pub const COMMENT_START_OR_END: &str = "--";
 
+/// RNI
 pub const RESERVED_NAME_INDICATOR: &str = "#";
+
+/// CRO
+pub const CHARACTER_REFERENCE_OPEN: &str = "#";
+
+/// REFC
+pub const REFERENCE_CLOSE: &str = ";";
+
+/// ERO
+pub const ENTITY_REFERENCE_OPEN: &str = "&";
 
 macro_rules! either {
     ($i: expr, $first: expr, $second: expr, $($next: expr),*) => {
@@ -67,7 +79,8 @@ fn parse_sgml_document(i: &str) -> IResult<&str, &str> {
     }
 
     let (i, _) = parse_sgml_document_entity(i)?;
-    let (i, _) = many0(inner)(i)?;
+    //TODO: should be many0, need to parse more of the above
+    let (i, _) = opt(inner)(i)?;
     Ok((i, ""))
 }
 
@@ -136,7 +149,6 @@ fn parse_document_type_declaration(i: &str) -> IResult<&str, &str> {
     let (i, _) = many0(parse_parameter_seperator)(i)?;
     let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
 
-    //TODO:
     Ok((i, ""))
 }
 
@@ -164,10 +176,10 @@ fn parse_document_element(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.3)[13]
 fn parse_element(i: &str) -> IResult<&str, &str> {
-    //TODO: extra also start/end tag can be opt
+    //TODO: extra also start tag can be opt
     let (i, _) = parse_start_tag(i)?;
     let (i, _content) = parse_content(i)?;
-    let (i, _) = parse_end_tag(i)?;
+    let (i, _) = opt(parse_end_tag)(i)?;
 
     Ok((i, ""))
 }
@@ -198,10 +210,12 @@ fn parse_prolog(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.1)[8]
 fn parse_other_prolog(i: &str) -> IResult<&str, &str> {
-    // let (i, _) = either!(i, parse_comment_declaration, parse_processing_instruction, parse_separator)?;
-    //TODO everything else
-    let (i, _) = parse_separator(i)?;
-
+    let (i, _) = either!(
+        i,
+        parse_comment_declaration,
+        parse_processing_instruction,
+        parse_separator
+    )?;
     Ok((i, ""))
 }
 
@@ -236,18 +250,17 @@ fn parse_element_content(i: &str) -> IResult<&str, &str> {
 }
 /// ISO(7.6)[27]
 fn parse_other_content(i: &str) -> IResult<&str, &str> {
-    parse_comment_declaration(i)
-    // either!(
-    //     i,
-    //     parse_comment_declaration,
-    //     parse_short_reference_use_declaration,
-    //     parse_link_set_use_declaration,
-    //     parse_processing_instruction,
-    //     parse_shortref,
-    //     parse_character_reference,
-    //     parse_general_entitiy_reference,
-    //     parse_marked_section_declaration
-    // )
+    //TODO: shortref support
+    either!(
+        i,
+        parse_comment_declaration,
+        parse_short_reference_use_declaration,
+        parse_link_set_use_declaration,
+        parse_processing_instruction,
+        parse_character_reference,
+        parse_general_entity_reference,
+        parse_marked_section_declaration
+    )
 }
 /// ISO(9.1)[46]
 fn parse_replaceable_character_data(i: &str) -> IResult<&str, &str> {
@@ -256,7 +269,7 @@ fn parse_replaceable_character_data(i: &str) -> IResult<&str, &str> {
             i,
             parse_data_character,
             parse_character_reference,
-            parse_general_entitiy_reference
+            parse_general_entity_reference
         )
     }
     let (i, _) = many0(inner)(i)?;
@@ -272,11 +285,11 @@ fn parse_character_data(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.5)[19]
 fn parse_end_tag(i: &str) -> IResult<&str, &str> {
-    // let (i, _) = tag(END_TAG_OPEN)(i)?;
-    // let (i, _) = parse_document_type_specification(i)?;
-    // let (i, _) = parse_generic_identifier_specification(i)?;
-    // let (i, _) = many0(parse_separator)(i)?;
-    // let (i, _) = tag(START_TAG_CLOSE)(i)?;
+    let (i, _) = tag(END_TAG_OPEN)(i)?;
+    let (i, _) = parse_document_type_specification(i)?;
+    let (i, _) = parse_generic_identifier_specification(i)?;
+    let (i, _) = many0(parse_separator)(i)?;
+    let (i, _) = tag(START_TAG_CLOSE)(i)?;
     //TODO: min end tag
     Ok((i, ""))
 }
@@ -387,27 +400,199 @@ pub fn test_parse_comment_decl() {
     assert_eq!("", i);
 }
 
+/// ISO(11.6)[151]
+fn parse_map_name(i: &str) -> IResult<&str, &str> {
+    parse_name(i)
+}
+
+/// ISO(11.6)[152]
 fn parse_short_reference_use_declaration(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = tag_no_case("USEMAP")(i)?;
+    let (i, _) = many1(parse_separator)(i)?;
+    let (i, _) = parse_map_specification(i)?;
+    let (i, _) = opt(tuple((
+        many1(parse_separator),
+        parse_associated_element_type,
+    )))(i)?;
+    let (i, _) = many1(parse_separator)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
+
     Ok((i, ""))
 }
+
+/// ISO(10.1.5)[72]
+fn parse_associated_element_type(i: &str) -> IResult<&str, &str> {
+    either!(i, parse_generic_identifier, parse_name_group)
+}
+
+/// ISO(11.6)[153]
+fn parse_map_specification(i: &str) -> IResult<&str, &str> {
+    //TODO: is this actually a *literal* empty?
+    fn inner(i: &str) -> IResult<&str, &str> {
+        let (i, _) = tuple((tag(RESERVED_NAME_INDICATOR), tag_no_case("EMPTY")))(i)?;
+        Ok((i, ""))
+    }
+
+    let (i, _) = either!(i, parse_map_name, inner)?;
+    Ok((i, ""))
+}
+
+/// ISO(12.3)[169]
 fn parse_link_set_use_declaration(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = tag_no_case("USELINK")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_link_set_specification(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_link_type_name(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
     Ok((i, ""))
 }
+
+/// ISO(12.3)[170]
+fn parse_link_set_specification(i: &str) -> IResult<&str, &str> {
+    fn inner1(i: &str) -> IResult<&str, &str> {
+        //TODO: again is this *literal* empty / restore
+        let (i, _) = tuple((tag(RESERVED_NAME_INDICATOR), tag_no_case("EMPTY")))(i)?;
+        Ok((i, ""))
+    }
+    fn inner2(i: &str) -> IResult<&str, &str> {
+        //TODO: again is this *literal* empty / restore
+        let (i, _) = tuple((tag(RESERVED_NAME_INDICATOR), tag_no_case("RESTORE")))(i)?;
+        Ok((i, ""))
+    }
+
+    let (i, _) = either!(i, parse_link_set_name, inner1, inner2)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(12.2)[164]
+fn parse_link_set_name(i: &str) -> IResult<&str, &str> {
+    fn inner(i: &str) -> IResult<&str, &str> {
+        //TODO: again is this *literal* initial
+        let (i, _) = tuple((tag(RESERVED_NAME_INDICATOR), tag_no_case("INITIAL")))(i)?;
+        Ok((i, ""))
+    }
+    let (i, _) = either!(i, parse_name, inner)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(8)[44]
 fn parse_processing_instruction(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(PROCESSING_INSTRUCTION_OPEN)(i)?;
+    let (i, _) = parse_system_data(i)?;
+    let (i, _) = tag(PROCESSING_INSTRUCTION_CLOSE)(i)?;
     Ok((i, ""))
 }
-fn parse_shortref(i: &str) -> IResult<&str, &str> {
+
+/// ISO(8)[45]
+fn parse_system_data(i: &str) -> IResult<&str, &str> {
+    parse_character_data(i)
+}
+
+/// ISO(9.4.5)[61]
+fn parse_reference_end(i: &str) -> IResult<&str, &str> {
+    //TODO: the rest
+    let (i, _) = opt(tag(REFERENCE_CLOSE))(i)?;
+
     Ok((i, ""))
 }
+
+/// ISO(9.5)[62]
 fn parse_character_reference(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(CHARACTER_REFERENCE_OPEN)(i)?;
+    let (i, _) = either!(i, parse_function_name, parse_character_number)?;
+    let (i, _) = parse_reference_end(i)?;
+
     Ok((i, ""))
 }
-fn parse_general_entitiy_reference(i: &str) -> IResult<&str, &str> {
+
+/// ISO(9.5)[63]
+fn parse_function_name(i: &str) -> IResult<&str, &str> {
+    fn first(i: &str) -> IResult<&str, &str> {
+        tag_no_case("RE")(i)
+    }
+    fn second(i: &str) -> IResult<&str, &str> {
+        tag_no_case("RS")(i)
+    }
+    fn third(i: &str) -> IResult<&str, &str> {
+        tag_no_case("SPACE")(i)
+    }
+    let (i, _) = either!(i, first, second, third, parse_name)?;
+
     Ok((i, ""))
 }
+
+/// ISO(9.5)[64]
+fn parse_character_number(i: &str) -> IResult<&str, &str> {
+    let (i, _) = parse_number(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(9.4.4)[59]
+fn parse_general_entity_reference(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(ENTITY_REFERENCE_OPEN)(i)?;
+    let (i, _) = opt(parse_name_group)(i)?;
+    let (i, _) = parse_name(i)?;
+    let (i, _) = parse_reference_end(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(10.4)[93]
 fn parse_marked_section_declaration(i: &str) -> IResult<&str, &str> {
+    let (i, _) = parse_marked_section_start(i)?;
+    let (i, _) = parse_status_keyword_specification(i)?;
+    let (i, _) = tag(DECLARATION_SUBSET_OPEN)(i)?;
+    let (i, _) = parse_marked_section(i)?;
+    let (i, _) = parse_marked_section_end(i)?;
+
     Ok((i, ""))
 }
+/// ISO(10.4)[94]
+fn parse_marked_section_start(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = tag(DECLARATION_SUBSET_OPEN)(i)?;
+    Ok((i, ""))
+}
+/// ISO(10.4)[95]
+fn parse_marked_section_end(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKED_SECTION_CLOSE)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
+    Ok((i, ""))
+}
+/// ISO(10.4)[93]
+fn parse_status_keyword_specification(i: &str) -> IResult<&str, &str> {
+    fn inner(i: &str) -> IResult<&str, &str> {
+        either!(i, parse_status_keyword, tag_no_case("TEMP"))
+    }
+    let (i, _) = many0(tuple((many1(parse_parameter_seperator), inner)))(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+
+    Ok((i, ""))
+}
+/// ISO(10.4)[93]
+fn parse_status_keyword(i: &str) -> IResult<&str, &str> {
+    fn first(i: &str) -> IResult<&str, &str> {
+        tag_no_case("CDATA")(i)
+    }
+    fn second(i: &str) -> IResult<&str, &str> {
+        tag_no_case("IGNORE")(i)
+    }
+    fn third(i: &str) -> IResult<&str, &str> {
+        tag_no_case("INCLUDE")(i)
+    }
+    fn fourth(i: &str) -> IResult<&str, &str> {
+        tag_no_case("RCDATA")(i)
+    }
+    let (i, _) = either!(i, first, second, third, fourth)?;
+    Ok((i, ""))
+}
+
 fn parse_sgml_character(i: &str) -> IResult<&str, &str> {
     take_while_m_n(1, 1, |c: char| c != '-' && c != '<' && c != '>')(i)
 }
@@ -427,19 +612,49 @@ fn parse_character(i: &str) -> IResult<&str, &str> {
 
 /// ISO(10.1.6)[73]
 fn parse_external_identifier(i: &str) -> IResult<&str, &str> {
-    //TODO
-
     fn take_system(i: &str) -> IResult<&str, &str> {
         tag_no_case("SYSTEM")(i)
     }
+    fn inner(i: &str) -> IResult<&str, &str> {
+        let (i, _) = tuple((
+            tag_no_case("PUBLIC"),
+            many1(parse_parameter_seperator),
+            parse_public_identifier,
+        ))(i)?;
+        Ok((i, ""))
+    }
 
-    let (i, _tag) = either!(i, take_system, tag_no_case("PUBLIC"))?;
+    let (i, _tag) = either!(i, take_system, inner)?;
 
-    let (i, _) = many1(parse_parameter_seperator)(i)?;
-    let (i, _) = parse_public_identifier(i)?;
+    let (i, _) = opt(tuple((
+        many1(parse_parameter_seperator),
+        parse_system_identifier,
+    )))(i)?;
 
     Ok((i, ""))
 }
+
+/// ISO(10.1.6)[75]
+fn parse_system_identifier(i: &str) -> IResult<&str, &str> {
+    fn first(i: &str) -> IResult<&str, &str> {
+        let (i, _) = tuple((
+            tag(LITERAL_START_OR_END),
+            parse_system_data,
+            tag(LITERAL_START_OR_END),
+        ))(i)?;
+        Ok((i, ""))
+    }
+    fn second(i: &str) -> IResult<&str, &str> {
+        let (i, _) = tuple((
+            tag(LITERAL_START_OR_END_ALTERNATIVE),
+            parse_system_data,
+            tag(LITERAL_START_OR_END_ALTERNATIVE),
+        ))(i)?;
+        Ok((i, ""))
+    }
+    either!(i, first, second)
+}
+
 fn parse_document_type_declaration_subset(i: &str) -> IResult<&str, &str> {
     Ok((i, ""))
 }
