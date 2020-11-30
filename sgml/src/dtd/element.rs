@@ -4,7 +4,7 @@ use crate::dtd::template_strings::{parse_string, ChainElement, TemplateString};
 use nom::bytes::complete::{tag, tag_no_case, take_until, take_while};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
-use nom::multi::{separated_list0, separated_list1};
+use nom::multi::separated_list1;
 use nom::IResult;
 
 #[derive(Debug, Clone)]

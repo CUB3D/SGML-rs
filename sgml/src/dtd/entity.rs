@@ -1,7 +1,7 @@
 use crate::dtd::comment::parse_inline_comment;
 use crate::dtd::dtd::{take_until_whitespace, take_whitespace, take_whitespace_opt};
 use crate::dtd::template_strings::{parse_string, TemplateString};
-use nom::bytes::complete::{tag, tag_no_case, take_until, take_while1, take_while_m_n};
+use nom::bytes::complete::{tag, tag_no_case, take_while1, take_while_m_n};
 use nom::combinator::opt;
 use nom::error::ErrorKind;
 use nom::sequence::tuple;

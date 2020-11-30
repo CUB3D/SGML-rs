@@ -1,6 +1,5 @@
 use crate::dtd::entity::{parse_parameter_reference, Entity};
 use nom::bytes::complete::take;
-use nom::error::ErrorKind;
 use nom::IResult;
 
 #[derive(Debug, Clone, Eq, PartialEq)]

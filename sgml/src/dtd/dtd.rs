@@ -10,12 +10,15 @@ use nom::branch::alt;
 use nom::bytes::complete::{take_while, take_while1};
 use nom::error::ErrorKind;
 use nom::multi::many0;
-use nom::sequence::tuple;
 use nom::IResult;
 
 /// See ISO(B.8.1)
 pub const MARKUP_DECLARATION_OPEN: &str = "<!";
+/// DSO
 pub const DECLARATION_SUBSET_OPEN: &str = "[";
+/// DSC
+pub const DECLARATION_SUBSET_CLOSE: &str = "]";
+
 pub const MARKED_SECTION_CLOSE: &str = "]]";
 pub const MARKUP_DECLARATION_CLOSE: &str = ">";
 

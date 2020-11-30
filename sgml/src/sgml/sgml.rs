@@ -1,14 +1,19 @@
-use crate::dtd::dtd::take_until_whitespace;
+use crate::dtd::dtd::{
+    take_until_whitespace, take_whitespace, DECLARATION_SUBSET_CLOSE, DECLARATION_SUBSET_OPEN,
+    MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
+};
 use crate::dtd::element::{GROUP_CLOSE, GROUP_OPEN};
 use crate::sgml_declaration::sgml_declaration::{
-    parse_parameter_seperator, parse_sgml_declaration,
+    parse_parameter_seperator, parse_public_identifier, parse_sgml_declaration,
 };
-use nom::bytes::complete::{tag, take_until};
-use nom::character::complete::anychar;
+use nom::bits::complete::take;
+use nom::bytes::complete::{tag, tag_no_case, take_while, take_while_m_n};
 use nom::combinator::opt;
+use nom::error::ErrorKind::Many0;
 use nom::multi::{many0, many1};
 use nom::sequence::tuple;
 use nom::IResult;
+use std::io::ErrorKind;
 
 //TODO: move  all reference delimiters to common place
 //TODO: we likely have to support different literals...
@@ -27,11 +32,42 @@ pub const LITERAL_START_OR_END_ALTERNATIVE: &str = "'";
 /// VI
 pub const VALUE_INDICATOR: &str = "=";
 
+/// COM
+pub const COMMENT_START_OR_END: &str = "--";
+
+pub const RESERVED_NAME_INDICATOR: &str = "#";
+
+macro_rules! either {
+    ($i: expr, $first: expr, $second: expr, $($next: expr),*) => {
+        match $first($i) {
+            Ok((i, x)) => Ok((i, "")),
+            Err(_) => either!($i, $second, $($next),*)
+        }
+    };
+
+    ($i: expr, $first:expr, $second:expr) => {
+        match $first($i) {
+            Ok((i, x)) => Ok((i, "")),
+            Err(_) => $second($i)
+        }
+    };
+}
+
 /// ISO(6.1)[1]
 fn parse_sgml_document(i: &str) -> IResult<&str, &str> {
+    fn inner(i: &str) -> IResult<&str, &str> {
+        either!(
+            i,
+            parse_sgml_subdocument_entity,
+            parse_sgml_text_entity,
+            parse_character_data_entity,
+            parse_specific_character_data_entity,
+            parse_non_sgml_data_entity
+        )
+    }
+
     let (i, _) = parse_sgml_document_entity(i)?;
-    //TODO: others
-    let (i, _) = many0(parse_sgml_subdocument_entity)(i)?;
+    let (i, _) = many0(inner)(i)?;
     Ok((i, ""))
 }
 
@@ -41,15 +77,72 @@ fn parse_sgml_document_entity(i: &str) -> IResult<&str, &str> {
     let (i, _) = parse_sgml_declaration(i)?;
     let (i, _) = parse_prolog(i)?;
     let (i, _) = parse_document_instance_set(i)?;
-    //TODO: EE
     Ok((i, ""))
 }
+
 /// ISO(6.2)[3]
 fn parse_sgml_subdocument_entity(i: &str) -> IResult<&str, &str> {
     let (i, _) = parse_prolog(i)?;
     let (i, _) = parse_document_instance_set(i)?;
-    //TODO: EE
     Ok((i, ""))
+}
+
+/// ISO(6.2)[4]
+fn parse_sgml_text_entity(i: &str) -> IResult<&str, &str> {
+    let (i, _) = many0(parse_sgml_character)(i)?;
+    Ok((i, ""))
+}
+
+/// Parse a separator (s) ISO(6.2.1)[5]
+fn parse_separator(i: &str) -> IResult<&str, &str> {
+    take_whitespace(i)
+    // TODO:
+}
+
+/// ISO(6.3)[5.1]
+fn parse_character_data_entity(i: &str) -> IResult<&str, &str> {
+    let (i, _) = many0(parse_sgml_character)(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(6.3)[5.2]
+fn parse_specific_character_data_entity(i: &str) -> IResult<&str, &str> {
+    let (i, _) = many0(parse_sgml_character)(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(6.3)[6]
+fn parse_non_sgml_data_entity(i: &str) -> IResult<&str, &str> {
+    let (i, _) = many0(parse_character)(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(11.1)[110]
+fn parse_document_type_declaration(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = tag_no_case("DOCTYPE")(i)?;
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_document_type_name(i)?;
+    let (i, _) = opt(tuple((
+        many1(parse_parameter_seperator),
+        parse_external_identifier,
+    )))(i)?;
+    let (i, _) = opt(tuple((
+        many1(parse_parameter_seperator),
+        tag(DECLARATION_SUBSET_OPEN),
+        parse_document_type_declaration_subset,
+        tag(DECLARATION_SUBSET_CLOSE),
+    )))(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
+
+    //TODO:
+    Ok((i, ""))
+}
+
+/// ISO(11.1)[111]
+fn parse_document_type_name(i: &str) -> IResult<&str, &str> {
+    parse_generic_identifier(i)
 }
 
 /// ISO(7.2)[10]
@@ -71,32 +164,284 @@ fn parse_document_element(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.3)[13]
 fn parse_element(i: &str) -> IResult<&str, &str> {
-    //TODO: extra
-    let (i, _) = opt(parse_start_tag)(i)?;
+    //TODO: extra also start/end tag can be opt
+    let (i, _) = parse_start_tag(i)?;
     let (i, _content) = parse_content(i)?;
-    let (i, _) = opt(parse_end_tag)(i)?;
+    let (i, _) = parse_end_tag(i)?;
 
     Ok((i, ""))
+}
+
+/// ISO(7.1)[9]
+fn parse_base_document_type_declaration(i: &str) -> IResult<&str, &str> {
+    parse_document_type_declaration(i)
 }
 
 //TODO
+/// ISO(7.1)[7]
 fn parse_prolog(i: &str) -> IResult<&str, &str> {
-    Ok((i, ""))
-}
-fn parse_other_prolog(i: &str) -> IResult<&str, &str> {
-    Ok((i, ""))
-}
-fn parse_content(i: &str) -> IResult<&str, &str> {
-    Ok((i, ""))
-}
-fn parse_end_tag(i: &str) -> IResult<&str, &str> {
+    let (i, _) = many0(parse_other_prolog)(i)?;
+    let (i, _) = parse_base_document_type_declaration(i)?;
+
+    fn inner1(i: &str) -> IResult<&str, &str> {
+        either!(i, parse_document_type_declaration, parse_other_prolog)
+    }
+    let (i, _) = many0(inner1)(i)?;
+
+    fn inner2(i: &str) -> IResult<&str, &str> {
+        either!(i, parse_link_type_declaration, parse_other_prolog)
+    }
+    let (i, _) = many0(inner2)(i)?;
+
     Ok((i, ""))
 }
 
-/// Parse a separator (s) ISO(6.2.1)[5]
-fn parse_separator(i: &str) -> IResult<&str, &str> {
-    //TODO:
-    take_until_whitespace(i)
+/// ISO(7.1)[8]
+fn parse_other_prolog(i: &str) -> IResult<&str, &str> {
+    // let (i, _) = either!(i, parse_comment_declaration, parse_processing_instruction, parse_separator)?;
+    //TODO everything else
+    let (i, _) = parse_separator(i)?;
+
+    Ok((i, ""))
+}
+
+///ISO(7.6)[24]
+fn parse_content(i: &str) -> IResult<&str, &str> {
+    let (i, _) = either!(
+        i,
+        parse_mixed_content,
+        parse_element_content,
+        parse_replaceable_character_data,
+        parse_character_data
+    )?;
+    Ok((i, ""))
+}
+/// ISO(7.6)[25]
+fn parse_mixed_content(i: &str) -> IResult<&str, &str> {
+    either!(
+        i,
+        /*parse_data_character,*/ parse_element,
+        parse_other_content
+    )
+}
+/// ISO(7.6)[26]
+fn parse_element_content(i: &str) -> IResult<&str, &str> {
+    fn parse_content_inner(i: &str) -> IResult<&str, &str> {
+        either!(i, parse_element, parse_other_content, parse_separator)
+    }
+
+    //TODO: many1 -> many0
+    let (i, _) = many1(parse_content_inner)(i)?;
+    Ok((i, ""))
+}
+/// ISO(7.6)[27]
+fn parse_other_content(i: &str) -> IResult<&str, &str> {
+    parse_comment_declaration(i)
+    // either!(
+    //     i,
+    //     parse_comment_declaration,
+    //     parse_short_reference_use_declaration,
+    //     parse_link_set_use_declaration,
+    //     parse_processing_instruction,
+    //     parse_shortref,
+    //     parse_character_reference,
+    //     parse_general_entitiy_reference,
+    //     parse_marked_section_declaration
+    // )
+}
+/// ISO(9.1)[46]
+fn parse_replaceable_character_data(i: &str) -> IResult<&str, &str> {
+    fn inner(i: &str) -> IResult<&str, &str> {
+        either!(
+            i,
+            parse_data_character,
+            parse_character_reference,
+            parse_general_entitiy_reference
+        )
+    }
+    let (i, _) = many0(inner)(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(9.2)[47]
+fn parse_character_data(i: &str) -> IResult<&str, &str> {
+    //TODO: this should be a many0 however causes parsing issues rn
+    let (i, _s) = many1(parse_data_character)(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(7.5)[19]
+fn parse_end_tag(i: &str) -> IResult<&str, &str> {
+    // let (i, _) = tag(END_TAG_OPEN)(i)?;
+    // let (i, _) = parse_document_type_specification(i)?;
+    // let (i, _) = parse_generic_identifier_specification(i)?;
+    // let (i, _) = many0(parse_separator)(i)?;
+    // let (i, _) = tag(START_TAG_CLOSE)(i)?;
+    //TODO: min end tag
+    Ok((i, ""))
+}
+
+/// ISO(12.1)[154]
+fn parse_link_type_declaration(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = tag_no_case("LINKTYPE")(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_link_type_name(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    //TODO: why is this braced
+    let (i, _) = either!(
+        i,
+        parse_simple_link_specification,
+        parse_implicit_link_specification,
+        parse_explicit_link_specification
+    )?;
+    let (i, _) = opt(tuple((
+        many0(parse_parameter_seperator),
+        parse_external_identifier,
+    )))(i)?;
+    let (i, _) = opt(tuple((
+        many0(parse_parameter_seperator),
+        tag(DECLARATION_SUBSET_OPEN),
+        parse_link_type_declaration_subset,
+        tag(DECLARATION_SUBSET_CLOSE),
+    )))(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
+
+    Ok((i, ""))
+}
+
+/// ISO(12.1)[155]
+fn parse_link_type_name(i: &str) -> IResult<&str, &str> {
+    parse_name(i)
+}
+
+/// ISO(12.1.1)[156]
+fn parse_simple_link_specification(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(RESERVED_NAME_INDICATOR)(i)?;
+    let (i, _) = tag_no_case("SIMPLE")(i)?;
+    let (i, _) = tag(RESERVED_NAME_INDICATOR)(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = tag_no_case("IMPLIED")(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(12.1.2)[157]
+fn parse_implicit_link_specification(i: &str) -> IResult<&str, &str> {
+    let (i, _) = parse_source_document_type_name(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = tag(RESERVED_NAME_INDICATOR)(i)?;
+    let (i, _) = tag_no_case("IMPLIED")(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(12.1.3)[158]
+fn parse_explicit_link_specification(i: &str) -> IResult<&str, &str> {
+    let (i, _) = parse_source_document_type_name(i)?;
+    let (i, _) = many0(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_result_document_type_name(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(12.1.3)[159]
+fn parse_source_document_type_name(i: &str) -> IResult<&str, &str> {
+    parse_document_type_name(i)
+}
+
+/// ISO(12.1.3)[160]
+fn parse_result_document_type_name(i: &str) -> IResult<&str, &str> {
+    parse_document_type_name(i)
+}
+
+/// ISO(12.1.4)[161] TODO
+fn parse_link_type_declaration_subset(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+
+/// ISO(10.3)[91]
+fn parse_comment_declaration(i: &str) -> IResult<&str, &str> {
+    fn inner(i: &str) -> IResult<&str, &str> {
+        let (i, _) = opt(tuple((
+            parse_comment,
+            many0(tuple((parse_separator, parse_comment))),
+        )))(i)?;
+        Ok((i, ""))
+    }
+
+    let (i, _) = tag(MARKUP_DECLARATION_OPEN)(i)?;
+    let (i, _) = either!(i, parse_comment, inner)?;
+    let (i, _) = tag(MARKUP_DECLARATION_CLOSE)(i)?;
+    Ok((i, ""))
+}
+/// ISO(10.3)[92]
+fn parse_comment(i: &str) -> IResult<&str, &str> {
+    let (i, _) = tag(COMMENT_START_OR_END)(i)?;
+    let (i, _) = many0(parse_sgml_character)(i)?;
+    let (i, _) = tag(COMMENT_START_OR_END)(i)?;
+    Ok((i, ""))
+}
+#[test]
+pub fn test_parse_comment_decl() {
+    let x = parse_comment_declaration("<!-- Here\'s a good place to put a comment. -->");
+    let (i, d) = x.expect("Unable to parse comment");
+    assert_eq!("", i);
+}
+
+fn parse_short_reference_use_declaration(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_link_set_use_declaration(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_processing_instruction(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_shortref(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_character_reference(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_general_entitiy_reference(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_marked_section_declaration(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
+}
+fn parse_sgml_character(i: &str) -> IResult<&str, &str> {
+    take_while_m_n(1, 1, |c: char| c != '-' && c != '<' && c != '>')(i)
+}
+
+/// ISO(9.2)[48]
+fn parse_data_character(i: &str) -> IResult<&str, &str> {
+    parse_sgml_character(i)
+}
+
+/// ISO(9.2)[49]
+fn parse_character(i: &str) -> IResult<&str, &str> {
+    //TODO: needs capacity set parsing to add NONSGML support
+    // let (i, _) = either!(i, parse_sgml_character, tag(NONSGML))?;
+    let (i, _) = parse_sgml_character(i)?;
+    Ok((i, ""))
+}
+
+/// ISO(10.1.6)[73]
+fn parse_external_identifier(i: &str) -> IResult<&str, &str> {
+    //TODO
+
+    fn take_system(i: &str) -> IResult<&str, &str> {
+        tag_no_case("SYSTEM")(i)
+    }
+
+    let (i, _tag) = either!(i, take_system, tag_no_case("PUBLIC"))?;
+
+    let (i, _) = many1(parse_parameter_seperator)(i)?;
+    let (i, _) = parse_public_identifier(i)?;
+
+    Ok((i, ""))
+}
+fn parse_document_type_declaration_subset(i: &str) -> IResult<&str, &str> {
+    Ok((i, ""))
 }
 
 /// ISO(7.4)[14]
@@ -150,9 +495,14 @@ pub fn parse_attribute_specification(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.9.3)[33]
 pub fn parse_attribute_value_specification(i: &str) -> IResult<&str, &str> {
-    //TODO: either
-    // parse_attribute_value();
-    parse_attribute_value_literal(i)
+    either!(i, parse_attribute_value, parse_attribute_value_literal)
+}
+
+/// ISO(7.9.4)[35]
+pub fn parse_attribute_value(i: &str) -> IResult<&str, &str> {
+    //TODO:
+    parse_character_data(i)
+    // either!(i, parse_character_data, parse_general_entity_name, parse_general_entity_name_list, parse_id_value, parse_id_reference_value, parse_id_reference_list, parse_name, parse_name_list, parse_name_token, parse_name_token_list, parse_notation_name, parse_number, parse_number_list, parse_number_token, parse_number_token_list);
 }
 
 /// ISO(7.9.3)[34]
@@ -168,7 +518,7 @@ pub fn parse_attribute_value_literal(i: &str) -> IResult<&str, &str> {
 
 /// ISO(7.7)[28]
 pub fn parse_document_type_specification(i: &str) -> IResult<&str, &str> {
-    let (i, _) = many1(parse_name_group)(i)?;
+    let (i, _) = opt(parse_name_group)(i)?;
     Ok((i, ""))
 }
 
@@ -204,7 +554,7 @@ pub fn parse_ts(i: &str) -> IResult<&str, &str> {
 ///(4.198)
 //TODO: also 9.3 (also 9.1 for other areas)
 pub fn parse_name(i: &str) -> IResult<&str, &str> {
-    take_until(" ")(i)
+    take_while(|t| t != ' ' && t != '>')(i)
 }
 
 #[cfg(test)]
@@ -213,7 +563,89 @@ pub mod test {
 
     #[test]
     pub fn sgml_parse_html2_example() {
-        let i = "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">
+        let declaration = "<!SGML  \"ISO 8879:1986\"
+--
+	SGML Declaration for HyperText Markup Language (HTML).
+
+--
+
+CHARSET
+         BASESET  \"ISO 646:1983//CHARSET
+        International Reference Version
+            (IRV)//ESC 2/5 4/0\"
+        DESCSET  0   9   UNUSED
+        9   2   9
+        11  2   UNUSED
+        13  1   13
+        14  18  UNUSED
+        32  95  32
+        127 1   UNUSED
+        BASESET   \"ISO Registration Number 100//CHARSET
+                ECMA-94 Right Part of
+                Latin Alphabet Nr. 1//ESC 2/13 4/1\"
+
+        DESCSET  128  32   UNUSED
+        160  96    32
+
+        CAPACITY        SGMLREF
+        TOTALCAP        150000
+        GRPCAP          150000
+        ENTCAP		150000
+
+        SCOPE    DOCUMENT
+        SYNTAX
+        SHUNCHAR CONTROLS 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
+        17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 127
+        BASESET  \"ISO 646:1983//CHARSET
+                   International Reference Version
+                   (IRV)//ESC 2/5 4/0\"
+        DESCSET  0 128 0
+        FUNCTION
+        RE          13
+        RS          10
+        SPACE       32
+        TAB SEPCHAR  9
+
+
+        NAMING   LCNMSTRT \"\"
+        UCNMSTRT \"\"
+        LCNMCHAR \".-\"
+        UCNMCHAR \".-\"
+        NAMECASE GENERAL YES
+        ENTITY  NO
+        DELIM    GENERAL  SGMLREF
+        SHORTREF SGMLREF
+        NAMES    SGMLREF
+        QUANTITY SGMLREF
+        ATTSPLEN 2100
+        LITLEN   1024
+        NAMELEN  72    -- somewhat arbitrary; taken from
+        internet line length conventions --
+            PILEN    1024
+        TAGLVL   100
+        TAGLEN   2100
+        GRPGTCNT 150
+        GRPCNT   64
+
+        FEATURES
+        MINIMIZE
+        DATATAG  NO
+        OMITTAG  YES
+        RANK     NO
+        SHORTTAG YES
+        LINK
+        SIMPLE   NO
+        IMPLICIT NO
+        EXPLICIT NO
+        OTHER
+        CONCUR   NO
+        SUBDOC   NO
+        FORMAL   YES
+        APPINFO    \"SDA\"  -- conforming SGML Document Access application
+            --
+            >";
+
+        let content = "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">
             <HTML>
             <!-- Here's a good place to put a comment. -->
         <HEAD>
@@ -243,7 +675,12 @@ pub mod test {
             Be sure to read these <b>bold instructions</b>.
             </BODY></HTML>";
 
-        let x = parse_sgml_document(i);
+        let combined = format!("{}{}", declaration, content);
+
+        let x = parse_sgml_document(&combined);
+        println!("{:?}", x);
         assert_eq!(x.is_ok(), true);
+        let (i, x) = x.unwrap();
+        assert_eq!("", i);
     }
 }

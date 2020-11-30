@@ -1,7 +1,5 @@
 use crate::dtd::comment::parse_inline_comment;
-use crate::dtd::dtd::{
-    take_until_whitespace, take_whitespace, MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN,
-};
+use crate::dtd::dtd::{take_until_whitespace, MARKUP_DECLARATION_CLOSE, MARKUP_DECLARATION_OPEN};
 use crate::dtd::entity::take_space;
 use nom::bytes::complete::{is_a, tag, tag_no_case};
 use nom::bytes::streaming::take_until;
@@ -103,7 +101,7 @@ fn test_parse_capacity_set() {
     assert_eq!(i, "");
 }
 
-///ISO(10.1.6)
+///ISO(10.1.6)[74]
 pub fn parse_public_identifier(i: &str) -> IResult<&str, &str> {
     parse_minimum_literal(i)
 }
